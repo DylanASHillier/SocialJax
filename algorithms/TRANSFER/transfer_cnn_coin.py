@@ -21,80 +21,24 @@ import copy
 import pickle
 import os
 import matplotlib.pyplot as plt
+# Import shared network architectures and utilities
+from algorithms.utils import (
+    ActorCritic,
+    batchify,
+    batchify_dict,
+    batchify_numpy,
+    unbatchify,
+    save_params,
+    load_params,
+    evaluate_ippo as evaluate
+)
+
 from PIL import Image
 from pathlib import Path
 
-class CNN(nn.Module):
-    activation: str = "relu"
-
-    @nn.compact
-    def __call__(self, x):
-        if self.activation == "relu":
-            activation = nn.relu
-        else:
-            activation = nn.tanh
-        x = nn.Conv(
-            features=32,
-            kernel_size=(5, 5),
-            kernel_init=orthogonal(np.sqrt(2)),
-            bias_init=constant(0.0),
-        )(x)
-        x = activation(x)
-        x = nn.Conv(
-            features=32,
-            kernel_size=(3, 3),
-            kernel_init=orthogonal(np.sqrt(2)),
-            bias_init=constant(0.0),
-        )(x)
-        x = activation(x)
-        x = nn.Conv(
-            features=32,
-            kernel_size=(3, 3),
-            kernel_init=orthogonal(np.sqrt(2)),
-            bias_init=constant(0.0),
-        )(x)
-        x = activation(x)
-        x = x.reshape((x.shape[0], -1))  # Flatten
-
-        x = nn.Dense(
-            features=64, kernel_init=orthogonal(np.sqrt(2)), bias_init=constant(0.0)
-        )(x)
-        x = activation(x)
-
-        return x
+# Import shared IO utilities
 
 
-class ActorCritic(nn.Module):
-    action_dim: Sequence[int]
-    activation: str = "relu"
-
-    @nn.compact
-    def __call__(self, x):
-        if self.activation == "relu":
-            activation = nn.relu
-        else:
-            activation = nn.tanh
-
-        embedding = CNN(self.activation)(x)
-
-        actor_mean = nn.Dense(
-            64, kernel_init=orthogonal(np.sqrt(2)), bias_init=constant(0.0)
-        )(embedding)
-        actor_mean = activation(actor_mean)
-        actor_mean = nn.Dense(
-            self.action_dim, kernel_init=orthogonal(0.01), bias_init=constant(0.0)
-        )(actor_mean)
-        pi = distrax.Categorical(logits=actor_mean)
-
-        critic = nn.Dense(
-            64, kernel_init=orthogonal(np.sqrt(2)), bias_init=constant(0.0)
-        )(embedding)
-        critic = activation(critic)
-        critic = nn.Dense(1, kernel_init=orthogonal(1.0), bias_init=constant(0.0))(
-            critic
-        )
-
-        return pi, jnp.squeeze(critic, axis=-1)
 
 
 class Transition(NamedTuple):
@@ -105,7 +49,6 @@ class Transition(NamedTuple):
     log_prob: jnp.ndarray
     obs: jnp.ndarray
     info: jnp.ndarray
-
 
 def get_rollout(params, config):
     env = socialjax.make(config["ENV_NAME"], **config["ENV_KWARGS"])
@@ -140,18 +83,20 @@ def get_rollout(params, config):
     return state_seq
 
 
-def batchify(x: dict, agent_list, num_actors):
-    x = jnp.stack([x[:, a] for a in agent_list])
-    return x.reshape((num_actors, -1))
+def calculate_s_interest_schedule(n_agents=2):
+    """Calculate s_interest values based on the given ratio formula.
 
-def batchify_dict(x: dict, agent_list, num_actors):
-    x = jnp.stack([x[str(a)] for a in agent_list])
-    return x.reshape((num_actors, -1))
+    Args:
+        n_agents: Number of agents in the environment
 
+    Returns:
+        List of s_interest values to cycle through
+    """
+    ratio = [20, 10, 5, 3, 5/2, 2, 5/3, 4/3, 1]
+    s = [1] + [r / (n_agents + r - 1) for r in ratio]
+    s = [2 / (n_agents + 1)] * (len(ratio) + 1)
 
-def unbatchify(x: jnp.ndarray, agent_list, num_envs, num_actors):
-    x = x.reshape((num_actors, num_envs, -1))
-    return {a: x[i] for i, a in enumerate(agent_list)}
+    return s
 
 def group_and_distribute_sum(array):
     """
@@ -171,6 +116,14 @@ def group_and_distribute_sum(array):
     return group_sums[group_indices]
 
 def make_train(config):
+    # Calculate and add s_interest schedule to environment config
+    if config["ENV_KWARGS"].get("interest", False):
+        s_interest_schedule = calculate_s_interest_schedule(config["ENV_KWARGS"]["num_agents"])
+        config["ENV_KWARGS"]["s_interest_schedule"] = s_interest_schedule
+        config["ENV_KWARGS"]["s_interest_change_every"] = config.get("S_INTEREST_CHANGE_EVERY", 30000000)
+        print(f"Using s_interest schedule: {s_interest_schedule}")
+        print(f"Changing every {config['ENV_KWARGS']['s_interest_change_every']} timesteps")
+
     env = socialjax.make(config["ENV_NAME"], **config["ENV_KWARGS"])
 
     config["NUM_ACTORS"] = env.num_agents * config["NUM_ENVS"]
@@ -235,7 +188,6 @@ def make_train(config):
                 # SELECT ACTION
                 rng, _rng = jax.random.split(rng)
 
-
                 obs_batch = jnp.transpose(last_obs,(1,0,2,3,4)).reshape(-1, *(env.observation_space()[0]).shape)
                 # obs_batch = jnp.stack([last_obs[a] for a in env.agents]).reshape(-1, *env.observation_space().shape)
 
@@ -255,16 +207,31 @@ def make_train(config):
                 rng, _rng = jax.random.split(rng)
                 rng_step = jax.random.split(_rng, config["NUM_ENVS"])
 
+                # Calculate current timestep
+                current_timestep = update_step * config["NUM_STEPS"] * config["NUM_ENVS"]
+
                 obsv, env_state, reward, done, info = jax.vmap(
-                    env.step, in_axes=(0, 0, 0)
-                )(rng_step, env_state, env_act)
+                    env.step, in_axes=(0, 0, 0, None)
+                )(rng_step, env_state, env_act, current_timestep)
 
                 # shaped_reward = info.pop("shaped_reward")
                 # current_timestep = update_step*config["NUM_STEPS"]*config["NUM_ENVS"]
-                # reward = jax.tree_map(lambda x,y: x+y*rew_shaping_anneal(current_timestep), reward, shaped_reward)
+                # reward = jax.tree.map(lambda x,y: x+y*rew_shaping_anneal(current_timestep), reward, shaped_reward)
 
                 info["value"] = value
-                info = jax.tree_map(lambda x: x.reshape((config["NUM_ACTORS"])), info)
+                # Handle info reshaping - preserve scalar values like s_interest
+                def reshape_info_values(x):
+                    if jnp.ndim(x) == 0:  # scalar values
+                        return x
+                    elif x.size == config["NUM_ENVS"]:  # per-environment values
+                        # Repeat for each agent
+                        return jnp.repeat(x, env.num_agents)
+                    elif x.size == config["NUM_ACTORS"]:  # already per-actor
+                        return x.reshape((config["NUM_ACTORS"]))
+                    else:
+                        # Try to reshape to NUM_ACTORS, but handle gracefully
+                        return x.reshape(-1)[:config["NUM_ACTORS"]]
+                info = jax.tree.map(reshape_info_values, info)
                 transition = Transition(
                     batchify_dict(done, env.agents, config["NUM_ACTORS"]).squeeze(),
                     action,
@@ -295,9 +262,9 @@ def make_train(config):
                         transition.reward,
                     )
 
-                    reward_mean = jnp.mean(reward, axis=0)
-                    # reward_std = jnp.std(reward, axis=0) + 1e-8
-                    reward = (reward - reward_mean)# / reward_std
+                    # reward_mean = jnp.mean(reward, axis=0)
+                    # # reward_std = jnp.std(reward, axis=0) + 1e-8
+                    # reward = (reward - reward_mean)# / reward_std
 
                     delta = reward + config["GAMMA"] * next_value * (1 - done) - value
                     gae = (
@@ -319,8 +286,6 @@ def make_train(config):
                     unroll=16,
                 )
 
-
-
                 # adv_mean = jnp.mean(advantages, axis=0)
                 # adv_std = jnp.std(advantages, axis=0) + 1e-8
                 # advantages = (advantages - adv_mean)
@@ -328,7 +293,6 @@ def make_train(config):
                 # value_mean = jnp.mean(traj_batch.value, axis=0)
                 # value_std = jnp.std(traj_batch.value, axis=0) + 1e-8
                 # value=(traj_batch.value - value_mean) / value_std
-
 
                 return advantages, advantages + traj_batch.value  # traj.value; value
             
@@ -424,10 +388,12 @@ def make_train(config):
                 wandb.log(metric)
 
             update_step = update_step + 1
-            metric = jax.tree_map(lambda x: x.mean(), metric)
+            metric = jax.tree.map(lambda x: x.mean(), metric)
             metric["update_step"] = update_step
             metric["env_step"] = update_step * config["NUM_STEPS"] * config["NUM_ENVS"]
             metric["advantages"] = advantages.mean()
+            metric["eat_own_coins"] = metric["eat_own_coins"] * config["ENV_KWARGS"]["num_inner_steps"]
+
             # metric["original_rewards"] = metric["original_rewards"].mean() * config["NUM_STEPS"] 
             # metric["shaped_rewards"] = metric["shaped_rewards"].mean() * config["NUM_STEPS"] 
             jax.debug.callback(callback, metric)
@@ -447,15 +413,14 @@ def make_train(config):
 def single_run(config):
     config = OmegaConf.to_container(config)
 
-
     wandb.init(
         entity=config["ENTITY"],
         project=config["PROJECT"],
         tags=["SVO", "FF"],
         config=config,
         mode=config["WANDB_MODE"],
-        name=f'svo_cnn_territory_open',
-        group=f'territory_open',
+        name=f'transfer_cnn_coin',
+        group=f'coin',
     )
 
     rng = jax.random.PRNGKey(config["SEED"])
@@ -465,7 +430,7 @@ def single_run(config):
 
     print("** Saving Results **")
     filename = f'{config["ENV_NAME"]}_seed{config["SEED"]}_reward_{config["REWARD"]}'
-    train_state = jax.tree_map(lambda x: x[0], out["runner_state"][0])
+    train_state = jax.tree.map(lambda x: x[0], out["runner_state"][0])
     save_path = f"./checkpoints/{filename}.pkl"
     save_params(train_state, save_path)
     params = load_params(save_path)
@@ -476,80 +441,7 @@ def single_run(config):
     # agent_view_size is hardcoded as it determines the padding around the layout.
     # viz.animate(state_seq, agent_view_size=5, filename=f"{filename}.gif")
 
-def save_params(train_state, save_path):
-    os.makedirs(os.path.dirname(save_path), exist_ok=True)
-    params = jax.tree_util.tree_map(lambda x: np.array(x), train_state.params)
 
-    with open(save_path, 'wb') as f:
-        pickle.dump(params, f)
-
-def load_params(load_path):
-    with open(load_path, 'rb') as f:
-        params = pickle.load(f)
-    return jax.tree_util.tree_map(lambda x: jnp.array(x), params)
-
-def evaluate(params, env, save_path, config):
-    rng = jax.random.PRNGKey(0)
-    
-    rng, _rng = jax.random.split(rng)
-    obs, state = env.reset(_rng)
-    done = False
-    
-    pics = []
-    img = env.render(state)
-    pics.append(img)
-    root_dir = f"evaluation/territory_open"
-    path = Path(root_dir + "/state_pics")
-    path.mkdir(parents=True, exist_ok=True)
-
-    for o_t in range(config["GIF_NUM_FRAMES"]):
-        # 获取所有智能体的观察
-        print(o_t)
-        obs_batch = jnp.stack([obs[a] for a in env.agents]).reshape(-1, *env.observation_space()[0].shape)
-
-        # 使用模型选择动作
-        network = ActorCritic(action_dim=env.action_space().n, activation=config["ACTIVATION"])  # 使用与训练时相同的参数
-        pi, _ = network.apply(params, obs_batch)
-        rng, _rng = jax.random.split(rng)
-        actions = pi.sample(seed=_rng)
-        
-        # 转换动作格式
-        env_act = {k: v.squeeze() for k, v in unbatchify(
-            actions, env.agents, 1, env.num_agents
-        ).items()}
-        
-        # 执行动作
-        rng, _rng = jax.random.split(rng)
-        obs, state, reward, done, info = env.step(_rng, state, [v.item() for v in env_act.values()])
-        done = done["__all__"]
-        
-        # 记录结果
-        # episode_reward += sum(reward.values())
-        
-        # 渲染
-        img = env.render(state)
-        pics.append(img)
-        
-        print('###################')
-        print(f'Actions: {env_act}')
-        print(f'Reward: {reward}')
-        print(f'State: {state.agent_locs}')
-        print("###################")
-    
-    # 保存GIF
-    print(f"Saving Episode GIF")
-    pics = [Image.fromarray(img) for img in pics]
-    pics[0].save(
-    f"{root_dir}/state_outer_step_{o_t+1}.gif",
-    format="GIF",
-    save_all=True,
-    optimize=False,
-    append_images=pics[1:],
-    duration=200,
-    loop=0,
-    )
-        
-        # print(f"Episode {episode} total reward: {episode_reward}")
 def tune(default_config):
     """
     Hyperparameter sweep with wandb, including logic to:
@@ -563,28 +455,19 @@ def tune(default_config):
     default_config = OmegaConf.to_container(default_config)
 
     sweep_config = {
-        "name": "territory_open_angle",
+        "name": "coin_angle",
         "method": "grid",
         "metric": {
             "name": "returned_episode_original_returns",
             "goal": "maximize",
         },
         "parameters": {
-            # "LR": {"values": [0.001, 0.0005, 0.0001, 0.00005]},
-            # "ACTIVATION": {"values": ["relu", "tanh"]},
-            # "UPDATE_EPOCHS": {"values": [2, 4, 8]},
-            # "NUM_MINIBATCHES": {"values": [4, 8, 16, 32]},
-            # "CLIP_EPS": {"values": [0.1, 0.2, 0.3]},
-            # "ENT_COEF": {"values": [0.001, 0.01, 0.1]},
-            # "NUM_STEPS": {"values": [64, 128, 256]},
-            "ENV_KWARGS.svo_w": {"values": [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]},
-            # "ENV_KWARGS.svo_ideal_angle_degrees": {"values": [0, 45, 90]},
+            "SEED": {"values": [42, 52, 62]},
 
         },
     }
 
     def wrapped_make_train():
-
 
         wandb.init(project=default_config["PROJECT"])
         config = copy.deepcopy(default_config)
@@ -596,7 +479,6 @@ def tune(default_config):
             else:
                 config[k] = v
 
-
         # Rename the run for clarity
         run_name = f"sweep_{config['ENV_NAME']}_seed{config['SEED']}"
         wandb.run.name = run_name
@@ -606,7 +488,7 @@ def tune(default_config):
         rngs = jax.random.split(rng, config["NUM_SEEDS"])
         train_vjit = jax.jit(jax.vmap(make_train(config)))
         outs = jax.block_until_ready(train_vjit(rngs))
-        train_state = jax.tree_map(lambda x: x[0], outs["runner_state"][0])
+        train_state = jax.tree.map(lambda x: x[0], outs["runner_state"][0])
 
         # Evaluate and log
         # params = load_params(train_state.params)
@@ -619,8 +501,7 @@ def tune(default_config):
     )
     wandb.agent(sweep_id, wrapped_make_train, count=1000)
 
-
-@hydra.main(version_base=None, config_path="config", config_name="svo_cnn_territory_open")
+@hydra.main(version_base=None, config_path="config", config_name="transfer_cnn_coin")
 def main(config):
     if config["TUNE"]:
         tune(config)

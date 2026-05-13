@@ -14,31 +14,24 @@
 
 
 
-<div class="collage">
-    <div class="column" align="centre">
-        <div class="row" align="centre">
-            <img src="/docs/images/step_150_reward_common_coins.gif" alt="coins_common" width="19.2%">
-            <img src="/docs/images/step_150_reward_common_harvestopen.gif" alt="harvest_open_common" width="18.5%">
-            <img src="/docs/images/step_150_reward_common_closed.gif" alt="harvest_closed_common" width="18.5%">
-            <img src="/docs/images/step_150_reward_common_cleanup.gif" alt="clean_up_common" width="19.8%">
-            <img src="/docs/images/step_250_reward_common_coop_mining.gif" alt="coop_mining_common" width="14%">
-        </div>
-    </div>
-</div>
+<p align="center">
+  <img src="docs/images/step_150_reward_common_coins.gif" alt="coins_common" width="19.2%">
+  <img src="docs/images/step_150_reward_common_harvestopen.gif" alt="harvest_open_common" width="18.5%">
+  <img src="docs/images/step_150_reward_common_closed.gif" alt="harvest_closed_common" width="18.5%">
+  <img src="docs/images/step_150_reward_common_cleanup.gif" alt="clean_up_common" width="19.8%">
+  <img src="docs/images/step_250_reward_common_coop_mining.gif" alt="coop_mining_common" width="14%">
+</p>
 
 *Common Rewards* : a scenario where all agents share a single, unified reward signal. This approach ensures that all agents are aligned towards achieving the same objective, promoting collaboration and coordination among them.
 
-<div class="collage">
-    <div class="column" align="centre">
-        <div class="row" align="centre">
-            <img src="/docs/images/step_150_reward_individual_coins.gif" alt="coins_individual" width="19.2%">
-            <img src="/docs/images/step_150_reward_individual_harvestopen.gif" alt="harvest_open_individual" width="18.5%">
-            <img src="/docs/images/step_150_reward_individual_closed.gif" alt="harvest_closed_individual" width="18.5%">
-            <img src="/docs/images/step_150_reward_individual_cleanup.gif" alt="clean_up_individual" width="19.8%">
-            <img src="/docs/images/step_250_reward_individual_coop_mining.gif" alt="coop_mining_individual" width="14%">
-        </div>
-    </div>
-</div>
+<p align="center">
+  <img src="docs/images/step_150_reward_individual_coins.gif" alt="coins_individual" width="19.2%">
+  <img src="docs/images/step_150_reward_individual_harvestopen.gif" alt="harvest_open_individual" width="18.5%">
+  <img src="docs/images/step_150_reward_individual_closed.gif" alt="harvest_closed_individual" width="18.5%">
+  <img src="docs/images/step_150_reward_individual_cleanup.gif" alt="clean_up_individual" width="19.8%">
+  <img src="docs/images/step_250_reward_individual_coop_mining.gif" alt="coop_mining_individual" width="14%">
+</p>
+
 
 ***Individual Rewards***: each agent is assigned its own reward, inherently encouraging selfish behavior.
 
@@ -54,9 +47,6 @@ Our [blog](https://sites.google.com/view/socialjax/home) presents more details a
 
 ***[2025/04/29]*** 🚀 Updated [Mushrooms](https://github.com/cooperativex/SocialJax/tree/main/socialjax/environments/mushrooms) environment.
 
-***[2025/04/28]*** 🚀 Updated [Gift Refinement](https://github.com/cooperativex/SocialJax/tree/main/socialjax/environments/gift) environment.
-
-***[2025/04/16]*** ✨ Added [MAPPO](https://github.com/cooperativex/SocialJax/tree/main/algorithms/MAPPO) algorithm for all environments.
 
 
 ## Installation
@@ -191,7 +181,10 @@ for t in range(100):
 You can test the speed of our environments by running [speed_test_random.py](https://github.com/cooperativex/SocialJax/blob/main/speed_test/speed_test_random.py) or using the [colab](https://colab.research.google.com/github/cooperativex/SocialJax/blob/main/speed_test/speed_test_random.ipynb).
 
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> jax_upgrade
 ## See Also
 
 [JaxMARL](https://github.com/flairox/jaxmarl): accelerated MARL environments with baselines in JAX.
