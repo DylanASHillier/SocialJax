@@ -2044,6 +2044,7 @@ class PD_Arena(MultiAgentEnv):
             )
 
             condition_coop = jnp.where((state.grid[new_locs[:, 0], new_locs[:, 1]]==Items.coop), 1, 0)
+            condition_defect = jnp.where((state.grid[new_locs[:, 0], new_locs[:, 1]]==Items.defect), 1, 0)
 
             # TODO - fix this to be more efficient; agents moving would be less efficient.
             # ind_agent_label = jnp.array([False] * self.num_agents, dtype=jnp.bool_)
@@ -2184,6 +2185,8 @@ class PD_Arena(MultiAgentEnv):
                 info = {}
             
             info['eat_coop_tokens_number'] = jnp.array([jnp.sum(condition_coop)] * self.num_agents).squeeze() * self.num_inner_steps
+            info['coop_action'] = condition_coop.squeeze()    # [num_agents] per-agent: stepped on coop token
+            info['defect_action'] = condition_defect.squeeze()  # [num_agents] per-agent: stepped on defect token
                 
             # rewards, state, reborn_players = _interact_pd(key, state, actions)
             # info = {
@@ -2398,8 +2401,15 @@ class PD_Arena(MultiAgentEnv):
 
     def observation_space(self) -> spaces.Dict:
         """Observation space of the environment."""
+        # cnn per-cell depth = (len(Items)-1) one-hot item classes, plus the
+        # combine_channels/move_and_collapse extension: agent_element(1) +
+        # other_agent(1) + angle one-hot(4) + coop_resources(num_agents) +
+        # defect_resources(num_agents) + inv_to_show(2) + frozen(1)
+        # = (len(Items)-1) + 9 + 2*num_agents. The previous hardcoded "+17"
+        # only matched num_agents=4 and went stale when the default became 2
+        # (verified empirically: num_agents=2/3/4 -> depth 18/20/22).
         _shape_obs = (
-            (self.OBS_SIZE, self.OBS_SIZE, (len(Items)-1) + 17)
+            (self.OBS_SIZE, self.OBS_SIZE, (len(Items)-1) + 9 + 2 * self.num_agents)
             if self.cnn
             else (self.OBS_SIZE**2 * ((len(Items)-1) + 10),)
         )

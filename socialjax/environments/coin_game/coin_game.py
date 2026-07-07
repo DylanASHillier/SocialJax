@@ -1156,11 +1156,13 @@ class CoinGame(MultiAgentEnv):
             self.step_env = jax.jit(_step)
             self.reset = jax.jit(reset)
             self.get_obs_point = jax.jit(_get_obs_point)
+            self.get_obs = jax.jit(_get_obs)
         else:
             # if you want to see values whilst debugging, don't jit
             self.step_env = _step
             self.reset = reset
             self.get_obs_point = _get_obs_point
+            self.get_obs = _get_obs
         ################################################################################
 
     @property

@@ -1382,6 +1382,9 @@ class Mushrooms(MultiAgentEnv):
             
             blue_reward  = jnp.where(blue_matches, 1, 0)
             info["eat_blue_mushrooms"] = blue_reward.squeeze()
+            info["eat_red_mushrooms"] = jnp.where(red_matches, 1, 0).squeeze()
+            info["eat_green_mushrooms"] = jnp.where(green_matches, 1, 0).squeeze()
+            info["eat_orange_mushrooms"] = jnp.where(orange_matches, 1, 0).squeeze()
 
 
  

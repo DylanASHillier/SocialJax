@@ -1461,7 +1461,8 @@ class Clean_up(MultiAgentEnv):
             
             info["clean_action_info"] = jnp.where(actions == Actions.zap_clean, 1, 0).squeeze()
             info["cleaned_water"] = jnp.array([len(state.potential_dirt_and_dirt_label) - dirtCount] * self.num_agents).squeeze()
-            info["waste_cleared"] = jnp.array([len(state.potential_dirt_and_dirt_label) - dirtCount] * self.num_agents).squeeze() 
+            info["waste_cleared"] = jnp.array([len(state.potential_dirt_and_dirt_label) - dirtCount] * self.num_agents).squeeze()
+            info["harvest_action_info"] = apple_matches.squeeze()  # [num_agents] per-agent: picked up apple 
             
             state_nxt = State(
                 agent_locs=state.agent_locs,
