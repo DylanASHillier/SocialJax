@@ -22,3 +22,4 @@ test_lbf_simple.py
 
 # Editor / IDE configs
 .vscode/
+.DS_Store

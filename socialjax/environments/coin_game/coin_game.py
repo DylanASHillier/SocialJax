@@ -42,10 +42,12 @@ class State:
     reborn_locs: jnp.ndarray
     smooth_rewards: jnp.ndarray
 
+
 @chex.dataclass
 class EnvParams:
     payoff_matrix: chex.ArrayDevice
     freeze_penalty: int
+
 
 class Actions(IntEnum):
     turn_left = 0
@@ -64,14 +66,8 @@ class Items(IntEnum):
     red_apple = 3
     green_apple = 4
 
-    
-char_to_int = {
-    'W': 1,
-    ' ': 0,  # space 0
-    'C': 3,
-    'P': 4,
-    'Q': 5
-}
+
+char_to_int = {"W": 1, " ": 0, "C": 3, "P": 4, "Q": 5}  # space 0
 
 ROTATIONS = jnp.array(
     [
@@ -82,7 +78,6 @@ ROTATIONS = jnp.array(
         [0, 0, 0],  # up
         [0, 0, 0],  # down
         [0, 0, 0],  # stay
-
     ],
     dtype=jnp.int8,
 )
@@ -101,10 +96,10 @@ STEP_MOVE = jnp.array(
     [
         [0, 0, 0],
         [0, 0, 0],
-        [0, 1, 0],  
-        [0, -1, 0],  
-        [1, 0, 0],  
-        [-1, 0, 0],  
+        [0, 1, 0],
+        [0, -1, 0],
+        [1, 0, 0],
+        [-1, 0, 0],
         [0, 0, 0],
     ],
     dtype=jnp.int8,
@@ -114,27 +109,28 @@ STEP_MOVE = jnp.array(
 def ascii_map_to_matrix(map_ASCII, char_to_int):
     """
     Convert ASCII map to a JAX numpy matrix using the given character mapping.
-    
+
     Args:
     map_ASCII (list): List of strings representing the ASCII map
     char_to_int (dict): Dictionary mapping characters to integer values
-    
+
     Returns:
     jax.numpy.ndarray: 2D matrix representation of the ASCII map
     """
     # Determine matrix dimensions
     height = len(map_ASCII)
     width = max(len(row) for row in map_ASCII)
-    
+
     # Create matrix filled with zeros
     matrix = jnp.zeros((height, width), dtype=jnp.int32)
-    
+
     # Fill matrix with mapped values
     for i, row in enumerate(map_ASCII):
         for j, char in enumerate(row):
             matrix = matrix.at[i, j].set(char_to_int.get(char, 0))
-    
+
     return matrix
+
 
 def generate_agent_colors(num_agents):
     colors = []
@@ -144,9 +140,11 @@ def generate_agent_colors(num_agents):
         colors.append(tuple(int(x * 255) for x in rgb))
     return colors
 
+
 GREEN_COLOUR = (44.0, 160.0, 44.0)
 RED_COLOUR = (214.0, 39.0, 40.0)
 ###################################################
+
 
 class CoinGame(MultiAgentEnv):
 
@@ -171,36 +169,35 @@ class CoinGame(MultiAgentEnv):
         svo_w=0.5,
         svo_ideal_angle_degrees=45,
         interest=False,
-        s_interest = 0.5,
+        s_interest=0.5,
         s_interest_schedule=None,
         s_interest_change_every=30000000,
         jit=True,
-        
-        grid_size=(16,11),
+        grid_size=(16, 11),
         obs_size=11,
         cnn=True,
-        map_ASCII = [
-                "CCCCCCCCCCC",
-                "CPCCCCCCCCC",
-                "CCCCCCCCCCC",
-                "CCCCCCCCCCC",
-                "CCCCCCCCCCC",
-                "CCCCCCCCCCC",
-                "CCCCCCCCCCC",
-                "CCCCCCCCCCC",
-                "CCCCCCCCCCC",
-                "CCCCCCCCCCC",
-                "CCCCCCCCCCC",
-                "CCCCCCCCCCC",
-                "CCCCCCCCCCC",
-                "CCCCCCCCCCC",
-                "CCCCCCCCCPC",
-                "CCCCCCCCCCC",
-            ]
+        map_ASCII=[
+            "CCCCCCCCCCC",
+            "CPCCCCCCCCC",
+            "CCCCCCCCCCC",
+            "CCCCCCCCCCC",
+            "CCCCCCCCCCC",
+            "CCCCCCCCCCC",
+            "CCCCCCCCCCC",
+            "CCCCCCCCCCC",
+            "CCCCCCCCCCC",
+            "CCCCCCCCCCC",
+            "CCCCCCCCCCC",
+            "CCCCCCCCCCC",
+            "CCCCCCCCCCC",
+            "CCCCCCCCCCC",
+            "CCCCCCCCCPC",
+            "CCCCCCCCCCC",
+        ],
     ):
 
         super().__init__(num_agents=num_agents)
-        self.agents = list(range(num_agents))#, dtype=jnp.int16)
+        self.agents = list(range(num_agents))  # , dtype=jnp.int16)
         self._agents = jnp.array(self.agents, dtype=jnp.int16) + len(Items)
         self.num_inner_steps = num_inner_steps
         self.num_outer_steps = num_outer_steps
@@ -236,7 +233,10 @@ class CoinGame(MultiAgentEnv):
         self.PADDING = self.OBS_SIZE - 1
         self.regrow_rate = regrow_rate
         GRID = jnp.zeros(
-            (self.GRID_SIZE_ROW + 2 * self.PADDING, self.GRID_SIZE_COL + 2 * self.PADDING),
+            (
+                self.GRID_SIZE_ROW + 2 * self.PADDING,
+                self.GRID_SIZE_COL + 2 * self.PADDING,
+            ),
             dtype=jnp.int16,
         )
 
@@ -254,40 +254,33 @@ class CoinGame(MultiAgentEnv):
         self.SPAWNS_APPLE = find_positions(nums_map, 3)
         self.SPAWNS_PLAYERS = find_positions(nums_map, 4)
 
-
         # first attempt at func - needs improvement
         # inefficient due to double-checking collisions
-        def check_collision(
-                new_agent_locs: jnp.ndarray
-            ) -> jnp.ndarray:
-            '''
+        def check_collision(new_agent_locs: jnp.ndarray) -> jnp.ndarray:
+            """
             Function to check agent collisions.
-            
+
             Args:
-                - new_agent_locs: jnp.ndarray, the agent locations at the 
+                - new_agent_locs: jnp.ndarray, the agent locations at the
                 current time step.
-                
+
             Returns:
                 - jnp.ndarray matrix of bool of agents in collision.
-            '''
-            matcher = jax.vmap(
-                lambda x,y: jnp.all(x[:2] == y[:2]),
-                in_axes=(0, None)
+            """
+            matcher = jax.vmap(lambda x, y: jnp.all(x[:2] == y[:2]), in_axes=(0, None))
+
+            collisions = jax.vmap(matcher, in_axes=(None, 0))(
+                new_agent_locs, new_agent_locs
             )
 
-            collisions = jax.vmap(
-                matcher,
-                in_axes=(None, 0)
-            )(new_agent_locs, new_agent_locs)
-
             return collisions
-        
+
         def fix_collisions(
             key: jnp.ndarray,
             collided_moved: jnp.ndarray,
             collision_matrix: jnp.ndarray,
             agent_locs: jnp.ndarray,
-            new_agent_locs: jnp.ndarray
+            new_agent_locs: jnp.ndarray,
         ) -> jnp.ndarray:
             """
             Function defining multi-collision logic.
@@ -307,11 +300,11 @@ class CoinGame(MultiAgentEnv):
                 - jnp.ndarray of the final positions after collisions are
                 managed.
             """
-            def scan_fn(
-                    state,
-                    idx
-            ):
-                key, collided_moved, collision_matrix, agent_locs, new_agent_locs = state
+
+            def scan_fn(state, idx):
+                key, collided_moved, collision_matrix, agent_locs, new_agent_locs = (
+                    state
+                )
 
                 return jax.lax.cond(
                     collided_moved[idx] > 0,
@@ -320,15 +313,15 @@ class CoinGame(MultiAgentEnv):
                         collided_moved,
                         collision_matrix,
                         agent_locs,
-                        new_agent_locs
+                        new_agent_locs,
                     ),
-                    lambda: (state, new_agent_locs)
+                    lambda: (state, new_agent_locs),
                 )
 
             _, ys = jax.lax.scan(
                 scan_fn,
                 (key, collided_moved, collision_matrix, agent_locs, new_agent_locs),
-                jnp.arange(self.num_agents)
+                jnp.arange(self.num_agents),
             )
 
             final_locs = ys[-1]
@@ -340,7 +333,7 @@ class CoinGame(MultiAgentEnv):
             collided_moved: jnp.ndarray,
             collision_matrix: jnp.ndarray,
             agent_locs: jnp.ndarray,
-            new_agent_locs: jnp.ndarray
+            new_agent_locs: jnp.ndarray,
         ) -> Tuple[Tuple, jnp.ndarray]:
             def select_random_true_index(key, array):
                 # Calculate the cumulative sum of True values
@@ -351,90 +344,69 @@ class CoinGame(MultiAgentEnv):
 
                 # Generate a random index in the range of the number of True
                 # values
-                rand_index = jax.random.randint(
-                    key,
-                    (1,),
-                    0,
-                    true_count
-                )
+                rand_index = jax.random.randint(key, (1,), 0, true_count)
 
                 # Find the position of the random index within the cumulative
                 # sum
                 chosen_index = jnp.argmax(cumsum_array > rand_index)
 
                 return chosen_index
+
             # Pick one from all who collided & moved
             colliders_idx = jnp.argmax(collided_moved)
 
             collisions = collision_matrix[colliders_idx]
 
             # Check whether any of collision participants didn't move
-            collision_subjects = jnp.where(
-                collisions,
-                collided_moved,
-                collisions
-            )
+            collision_subjects = jnp.where(collisions, collided_moved, collisions)
             collision_mask = collisions == collision_subjects
             stayed = jnp.all(collision_mask)
             stayed_mask = jnp.logical_and(~stayed, ~collision_mask)
-            stayed_idx = jnp.where(
-                jnp.max(stayed_mask) > 0,
-                jnp.argmax(stayed_mask),
-                0
-            )
+            stayed_idx = jnp.where(jnp.max(stayed_mask) > 0, jnp.argmax(stayed_mask), 0)
 
             # Prepare random agent selection
             k1, k2 = jax.random.split(key, 2)
             rand_idx = select_random_true_index(k1, collisions)
-            collisions_rand = collisions.at[rand_idx].set(False) # <<<< PROBLEM LINE        
-            new_locs_rand = jax.vmap(
-                lambda p, l, n: jnp.where(p, l, n)
-            )(
-                collisions_rand,
-                agent_locs,
-                new_agent_locs
+            collisions_rand = collisions.at[rand_idx].set(False)  # <<<< PROBLEM LINE
+            new_locs_rand = jax.vmap(lambda p, l, n: jnp.where(p, l, n))(
+                collisions_rand, agent_locs, new_agent_locs
             )
 
             collisions_stayed = jax.lax.select(
                 jnp.max(stayed_mask) > 0,
                 collisions.at[stayed_idx].set(False),
-                collisions_rand
+                collisions_rand,
             )
-            new_locs_stayed = jax.vmap(
-                lambda p, l, n: jnp.where(p, l, n)
-            )(
-                collisions_stayed,
-                agent_locs,
-                new_agent_locs
+            new_locs_stayed = jax.vmap(lambda p, l, n: jnp.where(p, l, n))(
+                collisions_stayed, agent_locs, new_agent_locs
             )
 
             # Choose between the two scenarios - revert positions if
             # non-mover exists, otherwise choose random agent if all moved
-            new_agent_locs = jnp.where(
-                stayed,
-                new_locs_rand,
-                new_locs_stayed
-            )
+            new_agent_locs = jnp.where(stayed, new_locs_rand, new_locs_stayed)
 
             # Update move bools to reflect the post-collision positions
             collided_moved = jnp.clip(collided_moved - collisions, 0, 1)
             collision_matrix = collision_matrix.at[colliders_idx].set(
                 [False] * collisions.shape[0]
             )
-            return ((k2, collided_moved, collision_matrix, agent_locs, new_agent_locs), new_agent_locs)
-       
+            return (
+                (k2, collided_moved, collision_matrix, agent_locs, new_agent_locs),
+                new_agent_locs,
+            )
+
         def combine_channels(
-                grid: jnp.ndarray,
-                agent: int,
-                angles: jnp.ndarray,
-                agent_pickups: jnp.ndarray,
-                state: State,
-            ):
-            '''
+            grid: jnp.ndarray,
+            agent: int,
+            angles: jnp.ndarray,
+            agent_pickups: jnp.ndarray,
+            state: State,
+        ):
+            """
             Function to enforce symmetry in observations & generate final
-            feature representation; current agent is permuted to first 
+            feature representation; current agent is permuted to first
             position in the feature dimension.
-            
+
             Args:
                 - grid: jax ndarray of current agent's obs grid
                 - agent: int, an index indicating current agent number
@@ -449,139 +421,104 @@ class CoinGame(MultiAgentEnv):
                 3rd, pick-up [x] bool 4th, inventory [x, x] 5th, frozen [x]
                 6th, for a final obs grid of shape (5, 5, 14) (additional 4
                 one-hot places for 5 possible items)
-            '''
+            """
+
             def move_and_collapse(
-                    x: jnp.ndarray,
-                    angle: jnp.ndarray,
-                ) -> jnp.ndarray:
+                x: jnp.ndarray,
+                angle: jnp.ndarray,
+            ) -> jnp.ndarray:
 
                 # get agent's one-hot
                 agent_element = jnp.array([jnp.int8(x[agent])])
 
                 # mask to check if any other agent exists there
-                mask = x[len(Items)-1:] > 0
+                mask = x[len(Items) - 1 :] > 0
 
                 # does an agent exist which is not the subject?
                 other_agent = jnp.int8(
-                    jnp.logical_and(
-                        jnp.any(mask),
-                        jnp.logical_not(
-                            agent_element
-                        )
-                    )
+                    jnp.logical_and(jnp.any(mask), jnp.logical_not(agent_element))
                 )
 
                 # what is the class of the item in cell
-                item_idx = jnp.where(
-                    x,
-                    size=1
-                )[0]
+                item_idx = jnp.where(x, size=1)[0]
 
                 # check if agent is frozen and can observe inventories
                 show_inv_bool = jnp.logical_and(
-                        state.freeze[
-                            agent-len(Items)
-                        ].max(axis=-1) > 0,
-                        item_idx >= len(Items)
+                    state.freeze[agent - len(Items)].max(axis=-1) > 0,
+                    item_idx >= len(Items),
                 )
 
                 show_inv_idxs = jnp.where(
                     state.freeze[agent],
-                    size=12, # since, in a setting where simultaneous interac-
-                    fill_value=-1 # -tions can happen, only a max of 12 can
-                )[0] # happen at once (zap logic), regardless of pop size
+                    size=12,  # since, in a setting where simultaneous interac-
+                    fill_value=-1,  # -tions can happen, only a max of 12 can
+                )[
+                    0
+                ]  # happen at once (zap logic), regardless of pop size
 
                 inv_to_show = jnp.where(
                     jnp.logical_or(
                         jnp.logical_and(
                             show_inv_bool,
-                            jnp.isin(item_idx-len(Items), show_inv_idxs),
+                            jnp.isin(item_idx - len(Items), show_inv_idxs),
                         ),
-                        agent_element
+                        agent_element,
                     ),
                     state.agent_invs[item_idx - len(Items)],
-                    jnp.array([0, 0], dtype=jnp.int8)
+                    jnp.array([0, 0], dtype=jnp.int8),
                 )[0]
 
                 # check if agent is not the subject & is frozen & therefore
                 # not possible to interact with
                 frozen = jnp.where(
-                    other_agent,
-                    state.freeze[
-                        item_idx-len(Items)
-                    ].max(axis=-1) > 0,
-                    0
+                    other_agent, state.freeze[item_idx - len(Items)].max(axis=-1) > 0, 0
                 )
 
                 # get pickup/inv info
                 pick_up_idx = jnp.where(
-                    jnp.any(mask),
-                    jnp.nonzero(mask, size=1)[0],
-                    jnp.int8(-1)
+                    jnp.any(mask), jnp.nonzero(mask, size=1)[0], jnp.int8(-1)
                 )
                 picked_up = jnp.where(
-                    pick_up_idx > -1,
-                    agent_pickups[pick_up_idx],
-                    jnp.int8(0)
+                    pick_up_idx > -1, agent_pickups[pick_up_idx], jnp.int8(0)
                 )
 
                 # build extension
                 extension = jnp.concatenate(
-                    [
-                        agent_element,
-                        other_agent,
-                        angle,
-                        picked_up,
-                        inv_to_show,
-                        frozen
-                    ],
-                    axis=-1
+                    [agent_element, other_agent, angle, picked_up, inv_to_show, frozen],
+                    axis=-1,
                 )
 
                 # build final feature vector
-                final_vec = jnp.concatenate(
-                    [x[:len(Items)-1], extension],
-                    axis=-1
-                )
+                final_vec = jnp.concatenate([x[: len(Items) - 1], extension], axis=-1)
 
                 return final_vec
 
-            new_grid = jax.vmap(
-                jax.vmap(
-                    move_and_collapse
-                )
-            )(grid, angles)
+            new_grid = jax.vmap(jax.vmap(move_and_collapse))(grid, angles)
             return new_grid
-        
+
         def check_relative_orientation(
-                agent: int,
-                agent_locs: jnp.ndarray,
-                grid: jnp.ndarray
-            ) -> jnp.ndarray:
-            '''
+            agent: int, agent_locs: jnp.ndarray, grid: jnp.ndarray
+        ) -> jnp.ndarray:
+            """
             Check's relative orientations of all other agents in view of
             current agent.
-            
+
             Args:
                 - agent: int, an index indicating current agent number
                 - agent_locs: jax ndarray of agent locations (x, y, direction)
                 - grid: jax ndarray of current agent's obs grid
-                
+
             Returns:
                 - grid with 1) int -1 in places where no agent exists, or
                 where the agent is the current agent, and 2) int in range
                 0-3 in cells of opposing agents indicating relative
                 orientation to current agent.
-            '''
+            """
             # we decrement by num of Items when indexing as we incremented by
             # 5 in constructor call (due to 5 non-agent Items enum & locations
             # are indexed from 0)
             idx = agent - len(Items)
-            agents = jnp.delete(
-                self._agents,
-                idx,
-                assume_unique_indices=True
-            )
+            agents = jnp.delete(self._agents, idx, assume_unique_indices=True)
             curr_agent_dir = agent_locs[idx, 2]
 
             def calc_relative_direction(cell):
@@ -590,15 +527,13 @@ class CoinGame(MultiAgentEnv):
                 return (cell_direction - curr_agent_dir) % 4
 
             angle = jnp.where(
-                jnp.isin(grid, agents),
-                jax.vmap(calc_relative_direction)(grid),
-                -1
+                jnp.isin(grid, agents), jax.vmap(calc_relative_direction)(grid), -1
             )
 
             return angle
-        
+
         def rotate_grid(agent_loc: jnp.ndarray, grid: jnp.ndarray) -> jnp.ndarray:
-            '''
+            """
             Rotates agent's observation grid k * 90 degrees, depending on agent's
             orientation.
 
@@ -609,7 +544,7 @@ class CoinGame(MultiAgentEnv):
             Returns:
                 - jnp.ndarray of new rotated grid.
 
-            '''
+            """
             grid = jnp.where(
                 agent_loc[2] == 1,
                 jnp.rot90(grid, k=1, axes=(0, 1)),
@@ -629,16 +564,16 @@ class CoinGame(MultiAgentEnv):
             return grid
 
         def _get_obs_point(agent_loc: jnp.ndarray) -> jnp.ndarray:
-            '''
+            """
             Obtain the position of top-left corner of obs map using
             agent's current location & orientation.
 
-            Args: 
+            Args:
                 - agent_loc: jnp.ndarray, agent x, y, direction.
             Returns:
                 - x, y: ints of top-left corner of agent's obs map.
-            '''
-            
+            """
+
             x, y, direction = agent_loc
 
             x, y = x + self.PADDING, y + self.PADDING
@@ -646,31 +581,29 @@ class CoinGame(MultiAgentEnv):
             x = x - (self.OBS_SIZE // 2)
             y = y - (self.OBS_SIZE // 2)
 
-            x = jnp.where(direction == 0, x + (self.OBS_SIZE//2)-1, x)
+            x = jnp.where(direction == 0, x + (self.OBS_SIZE // 2) - 1, x)
             y = jnp.where(direction == 0, y, y)
 
             x = jnp.where(direction == 1, x, x)
-            y = jnp.where(direction == 1, y + (self.OBS_SIZE//2)-1, y)
+            y = jnp.where(direction == 1, y + (self.OBS_SIZE // 2) - 1, y)
 
-
-            x = jnp.where(direction == 2, x - (self.OBS_SIZE//2)+1, x)
+            x = jnp.where(direction == 2, x - (self.OBS_SIZE // 2) + 1, x)
             y = jnp.where(direction == 2, y, y)
 
-
             x = jnp.where(direction == 3, x, x)
-            y = jnp.where(direction == 3, y - (self.OBS_SIZE//2)+1, y)
+            y = jnp.where(direction == 3, y - (self.OBS_SIZE // 2) + 1, y)
 
             return x, y
 
         def _get_obs(state: State) -> jnp.ndarray:
-            '''
+            """
             Obtain the agent's observation of the grid.
 
-            Args: 
+            Args:
                 - state: State object containing env state.
             Returns:
                 - jnp.ndarray of grid observation.
-            '''
+            """
             # create state
             grid = jnp.pad(
                 state.grid,
@@ -684,7 +617,7 @@ class CoinGame(MultiAgentEnv):
             dynamic_slice = partial(
                 jax.lax.dynamic_slice,
                 operand=grid,
-                slice_sizes=(self.OBS_SIZE, self.OBS_SIZE)
+                slice_sizes=(self.OBS_SIZE, self.OBS_SIZE),
             )
 
             # obtain agent obs grids
@@ -693,13 +626,8 @@ class CoinGame(MultiAgentEnv):
             # rotate agent obs grids
             grids = jax.vmap(rotate_grid)(state.agent_locs, grids)
 
-            angles = jax.vmap(
-                check_relative_orientation,
-                in_axes=(0, None, 0)
-            )(
-                self._agents,
-                state.agent_locs,
-                grids
+            angles = jax.vmap(check_relative_orientation, in_axes=(0, None, 0))(
+                self._agents, state.agent_locs, grids
             )
 
             angles = jax.nn.one_hot(angles, 4)
@@ -707,33 +635,21 @@ class CoinGame(MultiAgentEnv):
             # one-hot (drop first channel as its empty blocks)
             grids = jax.nn.one_hot(
                 grids - 1,
-                num_agents + len(Items) - 1, # will be collapsed into a
-                dtype=jnp.int8 # [Items, self, other, extra features] representation
+                num_agents + len(Items) - 1,  # will be collapsed into a
+                dtype=jnp.int8,  # [Items, self, other, extra features] representation
             )
 
             # check agents that can interact
             inventory_sum = jnp.sum(state.agent_invs, axis=-1)
-            agent_pickups = jnp.where(
-                inventory_sum > INTERACT_THRESHOLD,
-                True,
-                False
-            )
+            agent_pickups = jnp.where(inventory_sum > INTERACT_THRESHOLD, True, False)
 
             # make index len(Item) always the current agent
             # and sum all others into an "other" agent
-            grids = jax.vmap(
-                combine_channels,
-                in_axes=(0, 0, 0, None, None)
-            )(
-                grids,
-                self._agents,
-                angles,
-                agent_pickups,
-                state
+            grids = jax.vmap(combine_channels, in_axes=(0, 0, 0, None, None))(
+                grids, self._agents, angles, agent_pickups, state
             )
 
             return grids
-
 
         def get_current_s_interest(timestep):
             """Calculate current s_interest based on timestep and schedule."""
@@ -746,10 +662,7 @@ class CoinGame(MultiAgentEnv):
             return self.s_interest_schedule[phase_idx]
 
         def _step(
-            key: chex.PRNGKey,
-            state: State,
-            actions: jnp.ndarray,
-            timestep: int = 0
+            key: chex.PRNGKey, state: State, actions: jnp.ndarray, timestep: int = 0
         ):
             """Step the environment."""
             # actions = self.action_set.take(indices=jnp.array([actions["0"], actions["agent_1"]]))
@@ -765,67 +678,102 @@ class CoinGame(MultiAgentEnv):
             # regrow apple
             grid_apple = state.grid
             probability = self.regrow_rate
+
             def regrow_green_apple(apple_locs, p):
-                new_apple = jnp.where((((grid_apple[apple_locs[0], apple_locs[1]] == Items.empty) & (p < probability)) 
-                                       | ((grid_apple[apple_locs[0], apple_locs[1]] == Items.green_apple))),  
-                                      Items.green_apple, grid_apple[apple_locs[0], apple_locs[1]])
+                new_apple = jnp.where(
+                    (
+                        (
+                            (grid_apple[apple_locs[0], apple_locs[1]] == Items.empty)
+                            & (p < probability)
+                        )
+                        | (
+                            (
+                                grid_apple[apple_locs[0], apple_locs[1]]
+                                == Items.green_apple
+                            )
+                        )
+                    ),
+                    Items.green_apple,
+                    grid_apple[apple_locs[0], apple_locs[1]],
+                )
                 return new_apple
+
             prob = jax.random.uniform(key, shape=(len(self.SPAWNS_APPLE),))
             new_apple = jax.vmap(regrow_green_apple)(self.SPAWNS_APPLE, prob)
-            new_apple_grid = grid_apple.at[self.SPAWNS_APPLE[:, 0], self.SPAWNS_APPLE[:, 1]].set(new_apple[:])
+            new_apple_grid = grid_apple.at[
+                self.SPAWNS_APPLE[:, 0], self.SPAWNS_APPLE[:, 1]
+            ].set(new_apple[:])
             state = state.replace(grid=new_apple_grid)
-
 
             grid_apple = state.grid
+
             def regrow_red_apple(apple_locs, p):
-                new_apple = jnp.where((((grid_apple[apple_locs[0], apple_locs[1]] == Items.empty) & (p < probability)) 
-                                       | ((grid_apple[apple_locs[0], apple_locs[1]] == Items.red_apple))),  
-                                      Items.red_apple, grid_apple[apple_locs[0], apple_locs[1]])
+                new_apple = jnp.where(
+                    (
+                        (
+                            (grid_apple[apple_locs[0], apple_locs[1]] == Items.empty)
+                            & (p < probability)
+                        )
+                        | (
+                            (
+                                grid_apple[apple_locs[0], apple_locs[1]]
+                                == Items.red_apple
+                            )
+                        )
+                    ),
+                    Items.red_apple,
+                    grid_apple[apple_locs[0], apple_locs[1]],
+                )
                 return new_apple
+
             prob = jax.random.uniform(subkey, shape=(len(self.SPAWNS_APPLE),))
             new_apple = jax.vmap(regrow_red_apple)(self.SPAWNS_APPLE, prob)
-            new_apple_grid = grid_apple.at[self.SPAWNS_APPLE[:, 0], self.SPAWNS_APPLE[:, 1]].set(new_apple[:])
+            new_apple_grid = grid_apple.at[
+                self.SPAWNS_APPLE[:, 0], self.SPAWNS_APPLE[:, 1]
+            ].set(new_apple[:])
             state = state.replace(grid=new_apple_grid)
 
-
             key, subkey = jax.random.split(key)
-            all_new_locs = jax.vmap(lambda p, a: jnp.int16(p + ROTATIONS[a]) % jnp.array([self.GRID_SIZE_ROW + 1, self.GRID_SIZE_COL + 1, 4], dtype=jnp.int16))(p=state.agent_locs, a=actions).squeeze()
-
-            agent_move = (actions == Actions.up) | (actions == Actions.down) | (actions == Actions.right) | (actions == Actions.left)
-            all_new_locs = jax.vmap(lambda m, n, p: jnp.where(m, n + STEP_MOVE[p], n))(m=agent_move, n=all_new_locs, p=actions)
-            
             all_new_locs = jax.vmap(
-                jnp.clip,
-                in_axes=(0, None, None)
-            )(
+                lambda p, a: jnp.int16(p + ROTATIONS[a])
+                % jnp.array(
+                    [self.GRID_SIZE_ROW + 1, self.GRID_SIZE_COL + 1, 4], dtype=jnp.int16
+                )
+            )(p=state.agent_locs, a=actions).squeeze()
+
+            agent_move = (
+                (actions == Actions.up)
+                | (actions == Actions.down)
+                | (actions == Actions.right)
+                | (actions == Actions.left)
+            )
+            all_new_locs = jax.vmap(lambda m, n, p: jnp.where(m, n + STEP_MOVE[p], n))(
+                m=agent_move, n=all_new_locs, p=actions
+            )
+
+            all_new_locs = jax.vmap(jnp.clip, in_axes=(0, None, None))(
                 all_new_locs,
                 jnp.array([0, 0, 0], dtype=jnp.int16),
                 jnp.array(
-                    [self.GRID_SIZE_ROW - 1, self.GRID_SIZE_COL - 1, 3],
-                    dtype=jnp.int16
+                    [self.GRID_SIZE_ROW - 1, self.GRID_SIZE_COL - 1, 3], dtype=jnp.int16
                 ),
             ).squeeze()
 
             # if you bounced back to your original space,
             # change your move to stay (for collision logic)
-            agents_move = jax.vmap(lambda n, p: jnp.any(n[:2] != p[:2]))(n=all_new_locs, p=state.agent_locs)
+            agents_move = jax.vmap(lambda n, p: jnp.any(n[:2] != p[:2]))(
+                n=all_new_locs, p=state.agent_locs
+            )
 
             # generate bool mask for agents colliding
             collision_matrix = check_collision(all_new_locs)
 
             # sum & subtract "self-collisions"
-            collisions = jnp.sum(
-                collision_matrix,
-                axis=-1,
-                dtype=jnp.int8
-            ) - 1
+            collisions = jnp.sum(collision_matrix, axis=-1, dtype=jnp.int8) - 1
             collisions = jnp.minimum(collisions, 1)
 
             # identify which of those agents made wrong moves
-            collided_moved = jnp.maximum(
-                collisions - ~agents_move,
-                0
-            )
+            collided_moved = jnp.maximum(collisions - ~agents_move, 0)
 
             # fix collisions at the correct indices
             new_locs = jax.lax.cond(
@@ -835,28 +783,22 @@ class CoinGame(MultiAgentEnv):
                     collided_moved,
                     collision_matrix,
                     state.agent_locs,
-                    all_new_locs
+                    all_new_locs,
                 ),
-                lambda: all_new_locs
+                lambda: all_new_locs,
             )
 
             # update inventories
             def red_matcher(p: jnp.ndarray) -> jnp.ndarray:
-                c_matches = jnp.array([
-                    state.grid[p[0], p[1]] == Items.red_apple
-                    ])
-                return c_matches
-            
-            def green_matcher(p: jnp.ndarray) -> jnp.ndarray:
-                c_matches = jnp.array([
-                    state.grid[p[0], p[1]] == Items.green_apple
-                    ])
+                c_matches = jnp.array([state.grid[p[0], p[1]] == Items.red_apple])
                 return c_matches
 
+            def green_matcher(p: jnp.ndarray) -> jnp.ndarray:
+                c_matches = jnp.array([state.grid[p[0], p[1]] == Items.green_apple])
+                return c_matches
 
             red_apple_matches = jax.vmap(red_matcher)(p=new_locs)
             green_apple_matches = jax.vmap(green_matcher)(p=new_locs)
-
 
             red_red_reward = self.payoff_matrix[0][0]
             red_green_reward = self.payoff_matrix[0][1]
@@ -869,7 +811,7 @@ class CoinGame(MultiAgentEnv):
 
             red_red_matches = red_apple_matches[0, :]
             red_green_matches = green_apple_matches[0, :]
-            
+
             # jnp.all(
             #     new_red_pos == state.blue_coin_pos, axis=-1
             # )
@@ -924,10 +866,7 @@ class CoinGame(MultiAgentEnv):
             # update grid
             old_grid = state.grid
 
-            new_grid = old_grid.at[
-                state.agent_locs[:, 0],
-                state.agent_locs[:, 1]
-            ].set(
+            new_grid = old_grid.at[state.agent_locs[:, 0], state.agent_locs[:, 1]].set(
                 jnp.int16(Items.empty)
             )
             x, y = new_locs[:, 0], new_locs[:, 1]
@@ -936,7 +875,6 @@ class CoinGame(MultiAgentEnv):
 
             # update agent locations
             state = state.replace(agent_locs=new_locs)
-
 
             if self.shared_rewards:
                 rewards = jnp.zeros((2, 1))
@@ -957,26 +895,49 @@ class CoinGame(MultiAgentEnv):
                 original_rewards = rewards * self.num_agents
                 if self.smooth_rewards:
                     should_smooth = (state.inner_t % 1) == 0
-                    new_smooth_rewards = 0.99 * 0.01* state.smooth_rewards + original_rewards
-                    rewards, disadvantageous, advantageous = self.get_inequity_aversion_rewards_immediate(new_smooth_rewards, state.inner_t, self.inequity_aversion_target_agents, self.inequity_aversion_alpha, self.inequity_aversion_beta)
+                    new_smooth_rewards = (
+                        0.99 * 0.01 * state.smooth_rewards + original_rewards
+                    )
+                    rewards, disadvantageous, advantageous = (
+                        self.get_inequity_aversion_rewards_immediate(
+                            new_smooth_rewards,
+                            state.inner_t,
+                            self.inequity_aversion_target_agents,
+                            self.inequity_aversion_alpha,
+                            self.inequity_aversion_beta,
+                        )
+                    )
                     state = state.replace(smooth_rewards=new_smooth_rewards)
                     info = {
-                    "original_rewards": rewards.squeeze(),
-                    "smooth_rewards": state.smooth_rewards.squeeze(),
-                    "shaped_rewards": rewards.squeeze(),
-                }
+                        "original_rewards": original_rewards.squeeze(),
+                        "smooth_rewards": state.smooth_rewards.squeeze(),
+                        "shaped_rewards": rewards.squeeze(),
+                    }
                 else:
-                    rewards, disadvantageous, advantageous = self.get_inequity_aversion_rewards_immediate(original_rewards, state.inner_t, self.inequity_aversion_target_agents, self.inequity_aversion_alpha, self.inequity_aversion_beta)
+                    rewards, disadvantageous, advantageous = (
+                        self.get_inequity_aversion_rewards_immediate(
+                            original_rewards,
+                            state.inner_t,
+                            self.inequity_aversion_target_agents,
+                            self.inequity_aversion_alpha,
+                            self.inequity_aversion_beta,
+                        )
+                    )
                     info = {
-                    "original_rewards": rewards.squeeze(),
-                    "shaped_rewards": rewards.squeeze(),
-                }
+                        "original_rewards": original_rewards.squeeze(),
+                        "shaped_rewards": rewards.squeeze(),
+                    }
             elif self.svo:
                 rewards = jnp.zeros((2, 1))
                 rewards = rewards.at[0, 0].set(red_reward[0])
                 rewards = rewards.at[1, 0].set(green_reward[0])
                 original_rewards = rewards * self.num_agents
-                rewards, theta = self.get_svo_rewards(original_rewards, self.svo_w, self.svo_ideal_angle_degrees, self.svo_target_agents)
+                rewards, theta = self.get_svo_rewards(
+                    original_rewards,
+                    self.svo_w,
+                    self.svo_ideal_angle_degrees,
+                    self.svo_target_agents,
+                )
                 info = {
                     "original_rewards": original_rewards.squeeze(),
                     "svo_theta": theta.squeeze(),
@@ -994,10 +955,14 @@ class CoinGame(MultiAgentEnv):
 
                 # Each agent gets s * their_reward + (1-s)/(n-1) * sum_of_others
                 total_reward = jnp.sum(original_flat)
-                others_reward = total_reward - original_flat  # sum of all other agents' rewards
+                others_reward = (
+                    total_reward - original_flat
+                )  # sum of all other agents' rewards
 
-                rewards = (current_s_interest * original_flat +
-                        (1 - current_s_interest) / (self.num_agents - 1) * others_reward).reshape(-1, 1)
+                rewards = (
+                    current_s_interest * original_flat
+                    + (1 - current_s_interest) / (self.num_agents - 1) * others_reward
+                ).reshape(-1, 1)
 
                 info = {
                     "original_rewards": original_rewards.squeeze(),
@@ -1009,17 +974,17 @@ class CoinGame(MultiAgentEnv):
                 rewards = rewards.at[0, 0].set(red_reward[0])
                 org_rewards = rewards.at[1, 0].set(green_reward[0])
                 rewards = org_rewards * self.num_agents
-                
+
                 rewards_sum = jnp.sum(org_rewards)
                 rewards_sum_all_agents = jnp.zeros((self.num_agents, 1))
                 rewards_sum_all_agents += rewards_sum
                 sum_rewards = rewards_sum_all_agents
-                
+
                 info = {
                     "original_rewards": rewards.squeeze(),
                     "shaped_rewards": sum_rewards,
                 }
-            
+
             eat_own_coins = jnp.zeros((2, 1))
             red_reward, green_reward = 0, 0
             red_reward = jnp.where(
@@ -1048,7 +1013,6 @@ class CoinGame(MultiAgentEnv):
             #     rewards = rewards.at[1, 0].set(green_reward[0])
             #     rewards = rewards * self.num_agents
 
-
             state_nxt = State(
                 agent_locs=state.agent_locs,
                 agent_invs=state.agent_invs,
@@ -1058,7 +1022,7 @@ class CoinGame(MultiAgentEnv):
                 apples=state.apples,
                 freeze=state.freeze,
                 reborn_locs=state.reborn_locs,
-                smooth_rewards=state.smooth_rewards
+                smooth_rewards=state.smooth_rewards,
             )
 
             # now calculate if done for inner or outer episode
@@ -1077,15 +1041,13 @@ class CoinGame(MultiAgentEnv):
             )
             outer_t = state.outer_t
             reset_outer = outer_t == num_outer_steps
-            done = {f'{a}': reset_outer for a in self.agents}
+            done = {f"{a}": reset_outer for a in self.agents}
             # done = [reset_outer for _ in self.agents]
             done["__all__"] = reset_outer
 
             obs = _get_obs(state)
             rewards = jnp.where(
-                reset_inner,
-                jnp.zeros_like(rewards, dtype=jnp.int16),
-                rewards
+                reset_inner, jnp.zeros_like(rewards, dtype=jnp.int16), rewards
             )
 
             return (
@@ -1096,59 +1058,47 @@ class CoinGame(MultiAgentEnv):
                 info,
             )
 
-        def _reset_state(
-            key: jnp.ndarray
-        ) -> State:
+        def _reset_state(key: jnp.ndarray) -> State:
             key, subkey = jax.random.split(key)
 
             # Find the free spaces in the grid
             grid = jnp.zeros((self.GRID_SIZE_ROW, self.GRID_SIZE_COL), jnp.int16)
-
 
             agent_pos = jax.random.permutation(subkey, self.SPAWNS_PLAYERS)
 
             apple_pos = self.SPAWNS_APPLE
 
             player_dir = jax.random.randint(
-                subkey, shape=(
-                    num_agents,
-                    ), minval=0, maxval=3, dtype=jnp.int8
+                subkey, shape=(num_agents,), minval=0, maxval=3, dtype=jnp.int8
             )
 
             agent_locs = jnp.array(
-                [agent_pos[:, 0], agent_pos[:, 1], player_dir],
-                dtype=jnp.int16
+                [agent_pos[:, 0], agent_pos[:, 1], player_dir], dtype=jnp.int16
             ).T
 
-            grid = grid.at[
-                agent_locs[:, 0],
-                agent_locs[:, 1]
-            ].set(jnp.int16(self._agents))
-
-            freeze = jnp.array(
-                [[-1]*num_agents]*num_agents,
-            dtype=jnp.int16
+            grid = grid.at[agent_locs[:, 0], agent_locs[:, 1]].set(
+                jnp.int16(self._agents)
             )
+
+            freeze = jnp.array([[-1] * num_agents] * num_agents, dtype=jnp.int16)
 
             return State(
                 agent_locs=agent_locs,
-                agent_invs=jnp.array([(0,0)]*num_agents, dtype=jnp.int8),
+                agent_invs=jnp.array([(0, 0)] * num_agents, dtype=jnp.int8),
                 inner_t=0,
                 outer_t=0,
                 grid=grid,
                 apples=apple_pos,
-
                 freeze=freeze,
-                reborn_locs = agent_locs,
-                smooth_rewards=jnp.zeros((self.num_agents, 1))
+                reborn_locs=agent_locs,
+                smooth_rewards=jnp.zeros((self.num_agents, 1)),
             )
 
-        def reset(
-            key: jnp.ndarray
-        ) -> Tuple[jnp.ndarray, State]:
+        def reset(key: jnp.ndarray) -> Tuple[jnp.ndarray, State]:
             state = _reset_state(key)
             obs = _get_obs(state)
             return obs, state
+
         ################################################################################
         # if you want to test whether it can run on gpu, activate following code
         # overwrite Gymnax as it makes single-agent assumptions
@@ -1175,33 +1125,32 @@ class CoinGame(MultiAgentEnv):
         """Number of actions possible in environment."""
         return len(Actions)
 
-    def action_space(
-        self, agent_id: Union[int, None] = None
-    ) -> spaces.Discrete:
+    def action_space(self, agent_id: Union[int, None] = None) -> spaces.Discrete:
         """Action space of the environment."""
         return spaces.Discrete(len(Actions))
 
     def observation_space(self) -> spaces.Dict:
         """Observation space of the environment."""
         _shape_obs = (
-            (self.OBS_SIZE, self.OBS_SIZE, (len(Items)-1) + 10)
+            (self.OBS_SIZE, self.OBS_SIZE, (len(Items) - 1) + 10)
             if self.cnn
-            else (self.OBS_SIZE**2 * ((len(Items)-1) + 10),)
+            else (self.OBS_SIZE**2 * ((len(Items) - 1) + 10),)
         )
 
-        return spaces.Box(
-                low=0, high=1E9, shape=_shape_obs, dtype=jnp.uint8
-            ), _shape_obs
-    
+        return (
+            spaces.Box(low=0, high=1e9, shape=_shape_obs, dtype=jnp.uint8),
+            _shape_obs,
+        )
+
     def state_space(self) -> spaces.Dict:
         """State space of the environment."""
         _shape = (
             (self.GRID_SIZE_ROW, self.GRID_SIZE_COL, NUM_TYPES + 4)
             if self.cnn
-            else (self.GRID_SIZE_ROW* self.GRID_SIZE_COL * (NUM_TYPES + 4),)
+            else (self.GRID_SIZE_ROW * self.GRID_SIZE_COL * (NUM_TYPES + 4),)
         )
         return spaces.Box(low=0, high=1, shape=_shape, dtype=jnp.uint8)
-    
+
     def render_tile(
         self,
         obj: int,
@@ -1224,26 +1173,22 @@ class CoinGame(MultiAgentEnv):
             return self.tile_cache[key]
 
         img = onp.full(
-                shape=(tile_size * subdivs, tile_size * subdivs, 3),
-                fill_value=(70, 55, 40),
-                dtype=onp.uint8,
-            )
+            shape=(tile_size * subdivs, tile_size * subdivs, 3),
+            fill_value=(70, 55, 40),
+            dtype=onp.uint8,
+        )
 
-    # class Items(IntEnum):
+        # class Items(IntEnum):
 
         if obj in self._agents:
             # Draw the agent
-            agent_color = self.PLAYER_COLOURS[obj-len(Items)]
+            agent_color = self.PLAYER_COLOURS[obj - len(Items)]
         elif obj == Items.red_apple:
             # Draw the red coin as GREEN COOPERATE
-            fill_coords(
-                img, point_in_circle(0.5, 0.5, 0.31), (214.0, 39.0, 40.0)
-            )
+            fill_coords(img, point_in_circle(0.5, 0.5, 0.31), (214.0, 39.0, 40.0))
         elif obj == Items.green_apple:
             # Draw the blue coin as DEFECT/ RED COIN
-            fill_coords(
-                img, point_in_circle(0.5, 0.5, 0.31), (39.0, 214.0, 40.0)
-            )
+            fill_coords(img, point_in_circle(0.5, 0.5, 0.31), (39.0, 214.0, 40.0))
         elif obj == Items.wall:
             fill_coords(img, point_in_rect(0, 1, 0, 1), (127.0, 127.0, 127.0))
 
@@ -1321,14 +1266,14 @@ class CoinGame(MultiAgentEnv):
 
         img = onp.zeros(shape=(height_px, width_px, 3), dtype=onp.uint8)
         grid = onp.array(state.grid)
-        
+
         grid = onp.pad(
-            grid, ((self.PADDING, self.PADDING), (self.PADDING, self.PADDING)), constant_values=Items.wall
+            grid,
+            ((self.PADDING, self.PADDING), (self.PADDING, self.PADDING)),
+            constant_values=Items.wall,
         )
         for a in range(self.num_agents):
-            startx, starty = self.get_obs_point(
-                state.agent_locs[a]
-            )
+            startx, starty = self.get_obs_point(state.agent_locs[a])
             highlight_mask[
                 startx : startx + self.OBS_SIZE, starty : starty + self.OBS_SIZE
             ] = True
@@ -1349,11 +1294,9 @@ class CoinGame(MultiAgentEnv):
                 agent_dir = None
                 for a in range(self.num_agents):
                     agent_dir = (
-                        state.agent_locs[a,2].item()
-                        if agent_here[a]
-                        else agent_dir
+                        state.agent_locs[a, 2].item() if agent_here[a] else agent_dir
                     )
-                
+
                 agent_hat = False
                 # for a in range(self.num_agents):
                 #     agent_hat = (
@@ -1389,7 +1332,6 @@ class CoinGame(MultiAgentEnv):
         # img = onp.concatenate((img, time), axis=0)
         return img
 
-
     def render_time(self, state, width_px) -> onp.array:
         inner_t = state.inner_t
         outer_t = state.outer_t
@@ -1413,10 +1355,12 @@ class CoinGame(MultiAgentEnv):
             img[ymin:ymax, xmin:xmax, :] = onp.int8(255)
         return img
 
-    def get_inequity_aversion_rewards_immediate(self, array, inner_t, target_agents=None, alpha=5, beta=0.05):
+    def get_inequity_aversion_rewards_immediate(
+        self, array, inner_t, target_agents=None, alpha=5, beta=0.05
+    ):
         """
         Calculate inequity aversion rewards using immediate rewards, based on equation (3) in the paper
-        
+
         Args:
             array: shape: [num_agents, 1] immediate rewards r_i^t for each agent
             target_agents: list of agent indices to apply inequity aversion
@@ -1426,45 +1370,62 @@ class CoinGame(MultiAgentEnv):
             subjective_rewards: adjusted subjective rewards u_i^t after inequity aversion
         """
         # Ensure correct input shape
-        assert array.shape == (self.num_agents, 1), f"Expected shape ({self.num_agents}, 1), got {array.shape}"
-        
+        assert array.shape == (
+            self.num_agents,
+            1,
+        ), f"Expected shape ({self.num_agents}, 1), got {array.shape}"
+
         # Calculate inequality using immediate rewards
         r_i = array  # [num_agents, 1]
         r_j = jnp.transpose(array)  # [1, num_agents]
-        
+
         # Calculate inequality
-        disadvantageous = jnp.maximum(r_j - r_i, 0)  # when other agents' rewards are higher
-        advantageous = jnp.maximum(r_i - r_j, 0)     # when self's rewards are higher
-        
+        disadvantageous = jnp.maximum(
+            r_j - r_i, 0
+        )  # when other agents' rewards are higher
+        advantageous = jnp.maximum(r_i - r_j, 0)  # when self's rewards are higher
+
         # Create mask to exclude self-comparison
         mask = 1 - jnp.eye(self.num_agents)
         disadvantageous = disadvantageous * mask
         advantageous = advantageous * mask
-        
+
         # Calculate inequality penalty
         n_others = self.num_agents - 1
-        inequity_penalty = (alpha * jnp.sum(disadvantageous, axis=1, keepdims=True) +
-                           beta * jnp.sum(advantageous, axis=1, keepdims=True)) / n_others
+        inequity_penalty = (
+            alpha * jnp.sum(disadvantageous, axis=1, keepdims=True)
+            + beta * jnp.sum(advantageous, axis=1, keepdims=True)
+        ) / n_others
 
         # Calculate subjective rewards u_i^t = r_i^t - inequality penalty
         subjective_rewards = array - inequity_penalty
 
-        subjective_rewards = jnp.where(jnp.all(array == 0), -(alpha + beta) * n_others, subjective_rewards)
-        
+        subjective_rewards = jnp.where(
+            jnp.all(array == 0), -(alpha + beta) * n_others, subjective_rewards
+        )
+
         # Apply inequity aversion only to target agents if specified
         if target_agents is not None:
             target_agents_array = jnp.array(target_agents)
             agent_mask = jnp.zeros(self.num_agents, dtype=bool)
             agent_mask = agent_mask.at[target_agents_array].set(True)
             agent_mask = agent_mask.reshape(-1, 1)  # [num_agents, 1]
-            return jnp.where(agent_mask, subjective_rewards, array),jnp.sum(disadvantageous, axis=1, keepdims=True),jnp.sum(advantageous, axis=1, keepdims=True)
+            return (
+                jnp.where(agent_mask, subjective_rewards, array),
+                jnp.sum(disadvantageous, axis=1, keepdims=True),
+                jnp.sum(advantageous, axis=1, keepdims=True),
+            )
         else:
-            return subjective_rewards,jnp.sum(disadvantageous, axis=1, keepdims=True),jnp.sum(advantageous, axis=1, keepdims=True)
+            return (
+                subjective_rewards,
+                jnp.sum(disadvantageous, axis=1, keepdims=True),
+                jnp.sum(advantageous, axis=1, keepdims=True),
+            )
 
     def get_svo_rewards(self, array, w=0.5, ideal_angle_degrees=45, target_agents=None):
         """
         Reward shaping function based on Social Value Orientation (SVO)
-        
+
         Args:
             array: shape: [num_agents, 1] immediate rewards r_i for each agent
             w: SVO weight to balance self-reward and social value (0 <= w <= 1)
@@ -1474,28 +1435,33 @@ class CoinGame(MultiAgentEnv):
                - 0 degrees means completely selfish
                - 90 degrees means completely altruistic
             target_agents: list of agent indices to apply SVO
-        
+
         Returns:
             shaped_rewards: rewards adjusted by SVO
             theta: reward angle in radians
         """
         # Ensure correct input shape
-        assert array.shape == (self.num_agents, 1), f"Expected shape ({self.num_agents}, 1), got {array.shape}"
-        
+        assert array.shape == (
+            self.num_agents,
+            1,
+        ), f"Expected shape ({self.num_agents}, 1), got {array.shape}"
+
         # Convert ideal angle from degrees to radians
         ideal_angle = (ideal_angle_degrees * jnp.pi) / 180.0
-        
+
         # Calculate group average reward r_j (excluding self)
         mask = 1 - jnp.eye(self.num_agents)  # [num_agents, num_agents]
         # Modified: use matrix multiplication to calculate other agents' rewards
         others_rewards = jnp.matmul(mask, array)  # [num_agents, 1]
-        mean_others = others_rewards / (self.num_agents - 1)  # divide by number of other agents
-        
+        mean_others = others_rewards / (
+            self.num_agents - 1
+        )  # divide by number of other agents
+
         # Calculate reward angle θ(R) = arctan(r_j / r_i)
         r_i = array  # [num_agents, 1]
         r_j = mean_others  # [num_agents, 1]
         theta = jnp.arctan2(r_j, r_i)
-        
+
         # Calculate social value oriented utility
         # U(r_i, r_j) = r_i - w * |θ(R) - ideal_angle|
         angle_deviation = jnp.abs(theta - ideal_angle)
@@ -1511,37 +1477,44 @@ class CoinGame(MultiAgentEnv):
         else:
             return svo_utility, theta
 
-    def get_standardized_svo_rewards(self, array, w=0.5, ideal_angle_degrees=45, target_agents=None):
+    def get_standardized_svo_rewards(
+        self, array, w=0.5, ideal_angle_degrees=45, target_agents=None
+    ):
         """
         Reward shaping function based on Social Value Orientation (SVO)
         """
         # Ensure correct input shape
-        assert array.shape == (self.num_agents, 1), f"Expected shape ({self.num_agents}, 1), got {array.shape}"
-        
+        assert array.shape == (
+            self.num_agents,
+            1,
+        ), f"Expected shape ({self.num_agents}, 1), got {array.shape}"
+
         # Convert ideal angle from degrees to radians
         ideal_angle = (ideal_angle_degrees * jnp.pi) / 180.0
-        
+
         # Calculate group average reward r_j (excluding self)
         mask = 1 - jnp.eye(self.num_agents)
         others_rewards = jnp.matmul(mask, array)
         mean_others = others_rewards / (self.num_agents - 1)
-        
+
         # Calculate reward angle θ(R) = arctan(r_j / r_i)
         r_i = array
         r_j = mean_others
         theta = jnp.arctan2(r_j, r_i)
-        
+
         # Convert angle to [0, 2π] range
         theta = (theta + 2 * jnp.pi) % (2 * jnp.pi)
-        
+
         # Calculate angle deviation and normalize to [0, 1] range
         angle_deviation = jnp.abs(theta - ideal_angle)
-        angle_deviation = jnp.minimum(angle_deviation, 2 * jnp.pi - angle_deviation)  # take minimum deviation
+        angle_deviation = jnp.minimum(
+            angle_deviation, 2 * jnp.pi - angle_deviation
+        )  # take minimum deviation
         normalized_deviation = angle_deviation / jnp.pi  # normalize to [0, 1]
-        
+
         # Use multiplicative form of penalty instead of subtraction
         svo_utility = r_i * (1 - w * normalized_deviation)
-        
+
         # Apply SVO only to target agents if specified
         if target_agents is not None:
             target_agents_array = jnp.array(target_agents)
