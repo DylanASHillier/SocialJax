@@ -8,7 +8,11 @@
     <img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="Apache 2.0 License"></a>
   <a href="https://github.com/cooperativex/SocialJax/actions/workflows/speet_example.yml">
     <img src="https://github.com/cooperativex/SocialJax/actions/workflows/speet_example.yml/badge.svg" alt="Pylint Status"></a>
+  <a href="https://iclr.cc/virtual/2026/poster/10009567">
+    <img src="https://img.shields.io/badge/ICLR-2026-8A2BE2.svg" alt="ICLR 2026"></a>
 </p>
+
+> 🎉 **SocialJax has been accepted at ICLR 2026!**
 
 *A suite of sequential social dilemma environments for multi-agent reinforcement learning in JAX*
 
@@ -41,39 +45,37 @@ SocialJax leverages JAX's high-performance GPU capabilities to accelerate multi-
 
 Our [blog](https://sites.google.com/view/socialjax/home) presents more details and analysis on agents' policy and performance.
 
-## Update
-
-***[2025/05/28]*** ✨ Updated [SVO](https://github.com/cooperativex/SocialJax/tree/main/algorithms/SVO) algorithm for all environments.
-
-***[2025/04/29]*** 🚀 Updated [Mushrooms](https://github.com/cooperativex/SocialJax/tree/main/socialjax/environments/mushrooms) environment.
 
 
 
 ## Installation
 
 First: Clone the repository
+```bash
+git clone https://github.com/cooperativex/SocialJax.git
+cd SocialJax
+```
 
 
 Second: Environment Setup.
 
-Option one: Using peotry, make sure you have python 3.10
-  1. Install Peotry
+Option one: Using poetry, make sure you have python 3.10
+  1. Install Poetry
        ```bash
        curl -sSL https://install.python-poetry.org | python3 -
        export PATH="$HOME/.local/bin:$PATH"
        ```
 
-  2. Install requirements     
+  2. Install requirements
        ```bash
        poetry install --no-root
-       poetry run pip install jaxlib==0.4.23+cuda11.cudnn86 -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
        ```
        ```bash
-       export PYTHONPATH=./socialjax:$PYTHONPATH
+       export PYTHONPATH=$PWD:$PYTHONPATH
        ```
   3. Run code
        ```bash
-       poetry run python algorithms/IPPO/ippo_cnn_coins.py 
+       poetry run python algorithms/train.py --algo IPPO --env coins
        ```
 
 Option two: conda with requirements.txt
@@ -86,31 +88,118 @@ Option two: conda with requirements.txt
   2. Install requirements
        ```bash
        pip install -r requirements.txt
-       pip install jaxlib==0.4.23+cuda11.cudnn86 -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
        ```
        ```bash
-       export PYTHONPATH=./socialjax:$PYTHONPATH
+       export PYTHONPATH=$PWD:$PYTHONPATH
        ```
 
   3. Run code
        ```bash
-       python algorithms/IPPO/ippo_cnn_coins.py 
+       python algorithms/train.py --algo IPPO --env coins
        ```
 
-Option three: conda with environments.yml
+Option three: conda with environment.yml
 
   1. Install requirements
        ```bash
        conda env create -f environment.yml
        ```
        ```bash
-       export PYTHONPATH=./socialjax:$PYTHONPATH
+       export PYTHONPATH=$PWD:$PYTHONPATH
        ```
 
   2. Run code
        ```bash
-       python algorithms/IPPO/ippo_cnn_coins.py 
+       python algorithms/train.py --algo IPPO --env coins
        ```
+
+## Training
+
+All training is launched through a single entry point that dispatches by `--algo` and `--env`:
+
+```bash
+python algorithms/train.py --algo <ALGO> --env <ENV> [HYDRA_OVERRIDES...]
+```
+
+`--algo` selects the algorithm family; `--env` selects the per-env config (resolving to
+`algorithms/<ALGO>/config/<algo>_cnn_<env>.yaml`). Anything after these two flags is
+forwarded verbatim to Hydra as key=value overrides.
+
+### Supported algorithms
+
+| `--algo` | Description |
+|---|---|
+| `IPPO` | Independent PPO |
+| `SVO` | [Social Value Orientation (PPO with SVO reward shaping)](algorithms/SVO/README.md) |
+| `MAPPO` | Multi-Agent PPO (centralised critic) |
+| `TRANSFER` | [Self-interest reward exchange](algorithms/TRANSFER/README.md) |
+| `VDN` | Value Decomposition Networks (Q-learning) |
+
+### `--env` values
+
+Env names are unified across all algorithms (the per-env yamls live in
+`algorithms/<ALGO>/config/<algo>_cnn_<env>.yaml`):
+
+| Environment | `--env` |
+|---|---|
+| Coins | `coins` |
+| Clean Up | `cleanup` |
+| Coop Mining | `coop_mining` |
+| Gift | `gift` |
+| Mushrooms | `mushrooms` |
+| Harvest: Open | `harvest_open` |
+| Harvest: Closed | `harvest_closed` |
+| Harvest: Partnership | `harvest_partnership` |
+| PD Arena | `pd_arena` |
+
+### IPPO — common vs individual reward
+
+IPPO supports two reward modes: **common** (all agents share one summed reward) and **individual** (each agent gets its own reward — selfish baseline). Pick via the `reward` Hydra group; checkpoint and wandb name automatically get a `_reward_<mode>` suffix so both variants coexist.
+
+```bash
+python algorithms/train.py --algo IPPO --env coins reward=common
+python algorithms/train.py --algo IPPO --env coins reward=individual
+```
+
+### [SVO — Social Value Orientation](algorithms/SVO/README.md)
+
+SVO trains on individual rewards but shapes them toward a target orientation. The
+strength (`svo_w`) and ideal angle (`svo_ideal_angle_degrees`) live under `ENV_KWARGS`:
+
+```bash
+python algorithms/train.py --algo SVO --env coins
+python algorithms/train.py --algo SVO --env coins ENV_KWARGS.svo_w=0.5 ENV_KWARGS.svo_ideal_angle_degrees=45
+```
+
+### [TRANSFER — self-interest schedule transfer](algorithms/TRANSFER/README.md)
+
+TRANSFER mixes individual rewards by a self-interest weight `s_interest` (fixed per env
+in `transfer_cnn_<env>.yaml`, optionally scheduled over training). Override it inline via
+`ENV_KWARGS`:
+
+```bash
+python algorithms/train.py --algo TRANSFER --env coins
+python algorithms/train.py --algo TRANSFER --env pd_arena ENV_KWARGS.s_interest=0.4
+```
+
+### Hydra overrides
+
+```bash
+# Override hyperparameters
+python algorithms/train.py --algo IPPO --env coins SEED=42 LR=1e-4 NUM_ENVS=128
+
+# Multi-seed grid (Hydra multirun)
+python algorithms/train.py --algo MAPPO --env cleanup -m SEED=42,52,62
+
+# Override nested ENV_KWARGS
+python algorithms/train.py --algo SVO --env coins ENV_KWARGS.svo_w=0.8
+
+# VDN's hyperparameters live under an `alg.*` namespace
+python algorithms/train.py --algo VDN --env coins alg.NUM_ENVS=32 alg.LR=1e-4
+
+# Turn off wandb (useful for local smoke testing)
+python algorithms/train.py --algo IPPO --env coins WANDB_MODE=disabled
+```
 
 ## Environments
 
@@ -118,7 +207,7 @@ We introduce the environments and use Schelling diagrams to demonstrate whether 
 
 | Environment                  | Description                                                                                      | Schelling Diagrams Proof |
 |------------------------------|--------------------------------------------------------------------------------------------------|:------------------------:|
-| Coins                        | [Link](https://github.com/cooperativex/SocialJax/tree/main/socialjax/environments/coins)         |&check;                   |
+| Coins                        | [Link](https://github.com/cooperativex/SocialJax/tree/main/socialjax/environments/coin_game)     |&check;                   |
 | Commons Harvest: Open        | [Link](https://github.com/cooperativex/SocialJax/tree/main/socialjax/environments/common_harvest)|&check;                   |
 | Commons Harvest: Closed      | [Link](https://github.com/cooperativex/SocialJax/tree/main/socialjax/environments/common_harvest)|&check;                   |
 | Commons Harvest: partnership | [Link](https://github.com/cooperativex/SocialJax/tree/main/socialjax/environments/common_harvest)|&check;                   |
@@ -128,8 +217,6 @@ We introduce the environments and use Schelling diagrams to demonstrate whether 
 | Mushrooms                    | [Link](https://github.com/cooperativex/SocialJax/tree/main/socialjax/environments/mushrooms)     |&check;                   |
 | Gift Refinement              | [Link](https://github.com/cooperativex/SocialJax/tree/main/socialjax/environments/gift)          |&check;                   |
 | Prisoners Dilemma: Arena     | [Link](https://github.com/cooperativex/SocialJax/tree/main/socialjax/environments/pd_arena)      |&check;                   |
-
-
 
 #### Important Notes:
 - *Due to algorithmic limitations, agents may not always learn the optimal actions. As a result, Schelling diagrams can prove that the environment is social dilemmas, but they cannot definitively prove that the environment is not social dilemmas.*
@@ -182,9 +269,26 @@ You can test the speed of our environments by running [speed_test_random.py](htt
 
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 
 =======
 >>>>>>> jax_upgrade
+=======
+## Citation
+
+If you use SocialJax in your research, please cite:
+
+```bibtex
+@inproceedings{guo2025socialjax,
+  title={{SocialJax}: An Evaluation Suite for Multi-agent Reinforcement Learning in Sequential Social Dilemmas},
+  author={Guo, Zihao and Shi, Shuqing and Willis, Richard and Tomilin, Tristan and Leibo, Joel Z. and Du, Yali},
+  booktitle={International Conference on Learning Representations (ICLR)},
+  year={2026},
+}
+```
+
+
+>>>>>>> c988a1dcf416faa2e19adf9f2f2e881f3a0d9180
 ## See Also
 
 [JaxMARL](https://github.com/flairox/jaxmarl): accelerated MARL environments with baselines in JAX.

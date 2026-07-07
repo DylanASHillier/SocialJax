@@ -1,6 +1,8 @@
 # IPPO Configuration for Gift
 defaults:
   - ippo_base
+  - _self_
+  - reward: common  # override on CLI: reward=individual
 
 # Environment-specific settings
 "ENV_NAME": "gift"
@@ -8,11 +10,5 @@ defaults:
 "ENV_KWARGS":
   "num_agents": 2
   "num_inner_steps": 1000
-  "shared_rewards": False
   "cnn": True
   "jit": True
-
-# Reward settings
-"REWARD": "individual"
-"WANDB_TAGS":
-  - INDIVIDUAL_REWARD

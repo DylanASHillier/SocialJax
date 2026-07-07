@@ -1,19 +1,14 @@
 # IPPO Configuration for Coin Game
 defaults:
   - ippo_base
+  - _self_
+  - reward: common  # override on CLI: reward=individual
 
 # Environment-specific settings
 "ENV_NAME": "coin_game"
-"TOTAL_TIMESTEPS": 1e9
 
 "ENV_KWARGS":
   "num_agents": 2
   "num_inner_steps": 1000
-  "shared_rewards": False
   "cnn": True
   "jit": True
-
-# Reward settings
-"REWARD": "individual"
-"WANDB_TAGS":
-  - INDIVIDUAL_REWARD
